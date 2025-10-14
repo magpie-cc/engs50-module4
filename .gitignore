@@ -1,0 +1,12 @@
+# Build artifacts
+utils/*.o
+lib/libutils.a
+crawler/crawler
+
+# Editor files
+*~
+\#*\#
+.#*
+
+# OS files
+.DS_Store
