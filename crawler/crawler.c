@@ -1,6 +1,6 @@
 /* 
  * crawler.c - web crawler for tiny search engine
- * Step 3: Queue of webpages
+ * Step 4: Hashtable of URL's
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,23 +8,36 @@
 #include <stdbool.h>
 #include "webpage.h"
 #include "queue.h"
+#include "hash.h"
 
-// Helper function to print a webpage from the queue
+// Helper function to print a webpage from the queue or from the hash table
 void print_webpage(void *elementp) {
 	webpage_t *page = (webpage_t*)elementp;
 	printf("  URL: %s (depth: %d)\n", webpage_getURL(page), webpage_getDepth(page));
 }
 
+// helper search function
+bool searchfn(void *elementp, const void *searchkeyp) {
+	return strcmp(elementp, searchkeyp) == 0;
+}
+
+// helper function to check if a url is visited
+bool visited_url(hashtable_t *hp, char *url) {
+	return hsearch(hp, &searchfn, url, strlen(url)) != NULL;
+}
+
 int main(void) {
 	webpage_t *page;
 	queue_t *queue;
+	hashtable_t *hashtable;
 	char *url;
 	int pos = 0;
+	const uint32_t HASHTABLE_SIZE = 20;
 	
 	// Seed URL
 	const char *seedURL = "https://thayer.github.io/engs50/";
 	
-	printf("Step 3: Queue of Webpages\n");
+	printf("Step 4: Queue of Webpages\n");
 	printf("==========================\n\n");
 	
 	printf("Fetching seed page: %s\n", seedURL);
@@ -36,7 +49,7 @@ int main(void) {
 		return EXIT_FAILURE;
 	}
 	
-	// Fetch the page
+	// Fetch the% page
 	if (!webpage_fetch(page)) {
 		fprintf(stderr, "Error: failed to fetch webpage\n");
 		webpage_delete(page);
@@ -52,21 +65,32 @@ int main(void) {
 		webpage_delete(page);
 		return EXIT_FAILURE;
 	}
+
+	// Create hashtable to record visited URLs
+	hashtable = hopen(HASHTABLE_SIZE);
+	if (hashtable == NULL) {
+		fprintf(stderr, "Error: failed to create hashtable\n");
+		webpage_delete(page);
+		return EXIT_FAILURE;
+	}
 	
 	// Extract URLs and add internal ones to queue
 	printf("Extracting URLs...\n");
 
+	webpage_t *new_page;
+	
 	while ((pos = webpage_getNextURL(page, pos, &url)) > 0) {
 		// Check if internal
 		if (IsInternalURL(url)) {
 			printf("  [INTERNAL] %s\n", url);
 			
 			// Create new webpage for this URL at depth 1
-			webpage_t *new_page = webpage_new(url, 1, NULL);
-			if (new_page != NULL) {
+		  new_page = webpage_new(url, 1, NULL);
+			if (new_page != NULL && !visited_url(hashtable, url)) {
 				qput(queue, new_page);
+				hput(hashtable, url, url, strlen(url));  
 			}
-			free(url);  // FIX: webpage_new makes a copy, so free original
+			free(url);
 		} else {
 			printf("  [EXTERNAL] %s (skipped)\n", url);
 			free(url);  // Free external URLs
@@ -84,7 +108,7 @@ int main(void) {
 	// Verify requirements
 	printf("Verification:\n");
 	printf("- All URLs in queue are internal: ✓\n");
-	printf("- Two entries for CodingStyle.html exist: check queue above\n");
+	printf("- One entry for CodingStyle.html exists: check queue above\n");
 	
 	// Clean up: remove and delete all webpages from queue
 	webpage_t *wp;
@@ -94,11 +118,15 @@ int main(void) {
 	
 	// Close queue
 	qclose(queue);
-	
-	// Delete the seed page
+
+	// Close hashtable
+	hclose(hashtable);
+ 
+	// Delete the seed page and the new page
 	webpage_delete(page);
+	webpage_delete(new_page);
 	
-	printf("\n✓ Step 3 complete!\n");
+	printf("\n✓ Step 4 complete!\n");
 	
 	return EXIT_SUCCESS;
 }
