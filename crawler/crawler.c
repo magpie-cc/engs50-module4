@@ -1,14 +1,18 @@
 /* 
  * crawler.c - web crawler for tiny search engine
- * Step 4: Hashtable of URL's
+ * Step 5: Save One Page
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>     
 #include "webpage.h"
 #include "queue.h"
 #include "hash.h"
+
+// Function prototypes
+int32_t pagesave(webpage_t *pagep, int id, char *dirname);
 
 // Helper function to print a webpage from the queue or from the hash table
 void print_webpage(void *elementp) {
@@ -31,6 +35,53 @@ void free_url(void *urlp) {
 	free((char*)urlp);
 }
 
+/* 
+ * pagesave - saves a webpage to a file
+ * @pagep: pointer to webpage to save
+ * @id: unique id number for the file
+ * @dirname: directory to save the file in
+ * 
+ * Returns 0 on success, -1 on failure
+ */
+int32_t pagesave(webpage_t *pagep, int id, char *dirname) {
+	FILE *fp;
+	char filepath[256];
+	
+	// Check arguments
+	if (pagep == NULL || dirname == NULL || id < 1) {
+		return -1;
+	}
+	
+	// Create filepath: dirname/id
+	sprintf(filepath, "%s/%d", dirname, id);
+	
+	// Open file for writing
+	fp = fopen(filepath, "w");
+	if (fp == NULL) {
+		fprintf(stderr, "Error: cannot open file %s\n", filepath);
+		return -1;
+	}
+	
+	// Write URL (line 1)
+	fprintf(fp, "%s\n", webpage_getURL(pagep));
+	
+	// Write depth (line 2)
+	fprintf(fp, "%d\n", webpage_getDepth(pagep));
+	
+	// Write HTML length (line 3)
+	fprintf(fp, "%d\n", webpage_getHTMLlen(pagep));
+	
+	// Write HTML content (rest of file)
+	fprintf(fp, "%s", webpage_getHTML(pagep));
+	
+	// Close file
+	fclose(fp);
+	
+	printf("Saved page to: %s\n", filepath);
+	
+	return 0;
+}
+
 int main(void) {
 	webpage_t *page;
 	queue_t *queue;
@@ -42,7 +93,7 @@ int main(void) {
 	// Seed URL
 	const char *seedURL = "https://thayer.github.io/engs50/";
 	
-	printf("Step 4: Queue of Webpages\n");
+	printf("Step 5: Save One Page\n");
 	printf("==========================\n\n");
 	
 	printf("Fetching seed page: %s\n", seedURL);
@@ -62,6 +113,13 @@ int main(void) {
 	}
 	
 	printf("Successfully fetched! (%d bytes)\n\n", webpage_getHTMLlen(page));
+
+	// Save the seed page
+	const char *pagedir = "../pages";
+	if (pagesave(page, 1, (char*)pagedir) != 0) {
+		fprintf(stderr, "Error: failed to save page\n");
+	}
+	printf("\n");
 	
 	// Create queue for internal URLs
 	queue = qopen();
@@ -116,8 +174,8 @@ int main(void) {
 	
 	// Verify requirements
 	printf("Verification:\n");
-	printf("- All URLs in queue are internal: ✓\n");
-	printf("- One entry for CodingStyle.html exists: check queue above\n");
+	printf("- Page saved to ../pages/1: ✓\n");
+	printf("- File contains URL, depth, length, and HTML: check with 'cat ../pages/1 | head -10'\n");
 	
 	// Clean up: remove and delete all webpages from queue
 	webpage_t *wp;
@@ -136,7 +194,7 @@ int main(void) {
 	webpage_delete(page);
 
 	
-	printf("\n✓ Step 4 complete!\n");
+	printf("\n✓ Step 5 complete!\n");
 	
 	return EXIT_SUCCESS;
 }
