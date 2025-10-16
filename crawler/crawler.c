@@ -26,6 +26,11 @@ bool visited_url(hashtable_t *hp, char *url) {
 	return hsearch(hp, &searchfn, url, strlen(url)) != NULL;
 }
 
+// helper function to free a url string
+void free_url(void *urlp) {
+	free((char*)urlp);
+}
+
 int main(void) {
 	webpage_t *page;
 	queue_t *queue;
@@ -77,27 +82,31 @@ int main(void) {
 	// Extract URLs and add internal ones to queue
 	printf("Extracting URLs...\n");
 
-	webpage_t *new_page;
-	
 	while ((pos = webpage_getNextURL(page, pos, &url)) > 0) {
 		// Check if internal
 		if (IsInternalURL(url)) {
 			printf("  [INTERNAL] %s\n", url);
 			
-			// Create new webpage for this URL at depth 1
-		  new_page = webpage_new(url, 1, NULL);
-			if (new_page != NULL && !visited_url(hashtable, url)) {
-				qput(queue, new_page);
-				hput(hashtable, url, url, strlen(url));  
+			// Check if already visited
+			if (!visited_url(hashtable, url)) {
+				// Create new webpage for this URL at depth 1
+				webpage_t *new_page = webpage_new(url, 1, NULL);
+				if (new_page != NULL) {
+					qput(queue, new_page);
+					hput(hashtable, url, url, strlen(url));
+					// DON'T free url - hash table owns it now
+				} else {
+					free(url);  // Failed to create page, free the url
+				}
+			} else {
+				// Already visited, free the url
+				free(url);
 			}
-			free(url);
 		} else {
 			printf("  [EXTERNAL] %s (skipped)\n", url);
 			free(url);  // Free external URLs
 		}
 	}
-	
-	printf("\n");
 	
 	// Print the queue
 	printf("Queue contents:\n");
@@ -119,12 +128,13 @@ int main(void) {
 	// Close queue
 	qclose(queue);
 
-	// Close hashtable
+	// Free all URLs in hashtable, then close it
+	happly(hashtable, free_url);
 	hclose(hashtable);
  
 	// Delete the seed page and the new page
 	webpage_delete(page);
-	webpage_delete(new_page);
+
 	
 	printf("\n✓ Step 4 complete!\n");
 	
