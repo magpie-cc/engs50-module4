@@ -1,7 +1,8 @@
 /* 
  * crawler.c - web crawler for tiny search engine
- * Step 5: Save One Page
+ * Step 6: Complete Crawler
  */
+
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,9 +91,14 @@ int main(int argc, char* argv[]) {
 	hashtable_t *hashtable;
 	const uint32_t HASHTABLE_SIZE = 20;
 	int pageIndex = 1;
+	
+	if (argc != 4) {
+		fprintf(stderr, "usage: crawler <seedurl> <pagedir> <maxdepth>\n");
+		return EXIT_FAILURE;
+	}
 
 	// crawler "https://thayer.github.io/engs50/" ../pages 1
-  char *seedURL = argv[1];
+    char *seedURL = argv[1];
 	char *pagedir = argv[2];
 	int max_depth = strtoul(argv[3], NULL, 10);
 	
@@ -143,39 +149,39 @@ int main(int argc, char* argv[]) {
 	printf("Extracting URLs...\n");
 
 	while ((page = qget(queue)) != NULL) {
-	  int pos = 0;
+		int pos = 0;
 		char *url;
-		while ((pos = webpage_getNextURL(page, pos, &url)) > 0 && webpage_getDepth(page) < max_depth) {
+		
+		// Extract URLs from this page
+		while ((pos = webpage_getNextURL(page, pos, &url)) > 0) {
+			// Check if we've reached max depth - if so, free URL and skip processing
+			if (webpage_getDepth(page) >= max_depth) {
+				free(url);
+				continue;
+			}
+			
 			// Check if internal
 			if (IsInternalURL(url)) {
 				printf("  [INTERNAL] %s\n", url);
 			
 				// Check if already visited
 				if (!visited_url(hashtable, url)) {
-					// Create new webpage for this URL at depth 1
+					// Create new webpage for this URL at depth+1
 					webpage_t *new_page = webpage_new(url, webpage_getDepth(page) + 1, NULL);
 					if (new_page != NULL) {
 						webpage_fetch(new_page);
 						qput(queue, new_page);
 						char *urlcopy = strdup(url);      
 						hput(hashtable, urlcopy, urlcopy, strlen(urlcopy));
-						free(url);                        
 						if (pagesave(new_page, pageIndex++, (char*)pagedir) != 0) {
 							fprintf(stderr, "Error: failed to save page\n");
 						}
-					} else {
-						free(url);  // Failed to create page, free the url
-						url = NULL;
 					}
-				} else {
-					// Already visited, free the url
-					free(url);
-					url = NULL;
 				}
+				free(url);
 			} else {
 				printf("  [EXTERNAL] %s (skipped)\n", url);
-				free(url);  // Free external URLs
-				url = NULL;
+				free(url);
 			}
 		}
 		webpage_delete(page);
