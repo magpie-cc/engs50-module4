@@ -2,6 +2,7 @@
  * crawler.c - web crawler for tiny search engine
  * Step 5: Save One Page
  */
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,9 +33,10 @@ bool visited_url(hashtable_t *hp, char *url) {
 
 // helper function to free a url string
 void free_url(void *urlp) {
-	free((char*)urlp);
+	if (urlp != NULL) {
+		free((char*)urlp);
+	}
 }
-
 /* 
  * pagesave - saves a webpage to a file
  * @pagep: pointer to webpage to save
@@ -88,15 +90,12 @@ int main(int argc, char* argv[]) {
 	hashtable_t *hashtable;
 	const uint32_t HASHTABLE_SIZE = 20;
 	int pageIndex = 1;
-	
-	// crawler "https://thayer.github.io/engs50/" ../pages 1
-  char *seedURL = malloc(strlen(argv[1]) + 1);
-	char *pagedir = malloc(strlen(argv[2]) + 1);
-	int max_depth = strtoul(argv[3], NULL, 10);
 
-	strcpy(seedURL, argv[1]);
-	strcpy(pagedir, argv[2]);
- 
+	// crawler "https://thayer.github.io/engs50/" ../pages 1
+  char *seedURL = argv[1];
+	char *pagedir = argv[2];
+	int max_depth = strtoul(argv[3], NULL, 10);
+	
 	// Create queue for internal URLs
 	queue = qopen();
 	if (queue == NULL) {
@@ -116,7 +115,7 @@ int main(int argc, char* argv[]) {
 	printf("Fetching seed page: %s\n", seedURL);
 	
 	// Create webpage at depth 0
-	page = webpage_new((char*)seedURL, 0, NULL);
+	page = webpage_new( (char*) seedURL, 0, NULL);
 	if (page == NULL) {
 		fprintf(stderr, "Error: failed to create webpage\n");
 		return EXIT_FAILURE;
@@ -130,12 +129,14 @@ int main(int argc, char* argv[]) {
 	}
 	
 	printf("Successfully fetched! (%d bytes)\n\n", webpage_getHTMLlen(page));
-		
+
+	
 	// initial load
 	// put page in queue, mark as seen in hashtable, and save page
 	qput(queue, page);
-	hput(hashtable, seedURL, seedURL, strlen(seedURL));
-  pagesave(page, pageIndex++, (char*)pagedir);
+	char *seedcopy = strdup(seedURL);
+	hput(hashtable, seedcopy, seedcopy, strlen(seedcopy));
+	pagesave(page, pageIndex++, (char*)pagedir);
 	printf("\n");
 	
 	// Extract URLs and add internal ones to queue
@@ -143,7 +144,7 @@ int main(int argc, char* argv[]) {
 
 	while ((page = qget(queue)) != NULL) {
 	  int pos = 0;
-		char* url;
+		char *url;
 		while ((pos = webpage_getNextURL(page, pos, &url)) > 0 && webpage_getDepth(page) < max_depth) {
 			// Check if internal
 			if (IsInternalURL(url)) {
@@ -156,22 +157,28 @@ int main(int argc, char* argv[]) {
 					if (new_page != NULL) {
 						webpage_fetch(new_page);
 						qput(queue, new_page);
-						hput(hashtable, url, url, strlen(url));
+						char *urlcopy = strdup(url);      
+						hput(hashtable, urlcopy, urlcopy, strlen(urlcopy));
+						free(url);                        
 						if (pagesave(new_page, pageIndex++, (char*)pagedir) != 0) {
 							fprintf(stderr, "Error: failed to save page\n");
-						}					
+						}
 					} else {
 						free(url);  // Failed to create page, free the url
+						url = NULL;
 					}
 				} else {
 					// Already visited, free the url
 					free(url);
+					url = NULL;
 				}
 			} else {
 				printf("  [EXTERNAL] %s (skipped)\n", url);
 				free(url);  // Free external URLs
+				url = NULL;
 			}
 		}
+		webpage_delete(page);
 	}
 
 	// Clean up: remove and delete all webpages from queue
