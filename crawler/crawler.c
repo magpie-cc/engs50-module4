@@ -48,7 +48,7 @@ int32_t pagesave(webpage_t *pagep, int id, char *dirname) {
 	char filepath[256];
 	
 	// Check arguments
-	if (pagep == NULL || dirname == NULL || id < 1) {
+	if (pagep == NULL || dirname == NULL || id < 0) {
 		return -1;
 	}
 	
@@ -82,18 +82,35 @@ int32_t pagesave(webpage_t *pagep, int id, char *dirname) {
 	return 0;
 }
 
-int main(void) {
+int main(int argc, char* argv[]) {
 	webpage_t *page;
 	queue_t *queue;
 	hashtable_t *hashtable;
-	char *url;
-	int pos = 0;
 	const uint32_t HASHTABLE_SIZE = 20;
+	int pageIndex = 1;
 	
-	// Seed URL
-	const char *seedURL = "https://thayer.github.io/engs50/";
-	
-	printf("Step 5: Save One Page\n");
+	// crawler "https://thayer.github.io/engs50/" ../pages 1
+  char *seedURL = malloc(strlen(argv[1]) + 1);
+	char *pagedir = malloc(strlen(argv[2]) + 1);
+	int max_depth = strtoul(argv[3], NULL, 10);
+
+	strcpy(seedURL, argv[1]);
+	strcpy(pagedir, argv[2]);
+ 
+	// Create queue for internal URLs
+	queue = qopen();
+	if (queue == NULL) {
+		fprintf(stderr, "Error: failed to create queue\n");
+		return EXIT_FAILURE;
+	}
+
+	// Create hashtable to record visited URLs
+	hashtable = hopen(HASHTABLE_SIZE);
+	if (hashtable == NULL) {
+		fprintf(stderr, "Error: failed to create hashtable\n");
+		return EXIT_FAILURE;
+	}
+
 	printf("==========================\n\n");
 	
 	printf("Fetching seed page: %s\n", seedURL);
@@ -105,7 +122,7 @@ int main(void) {
 		return EXIT_FAILURE;
 	}
 	
-	// Fetch the% page
+	// Fetch the page
 	if (!webpage_fetch(page)) {
 		fprintf(stderr, "Error: failed to fetch webpage\n");
 		webpage_delete(page);
@@ -113,88 +130,59 @@ int main(void) {
 	}
 	
 	printf("Successfully fetched! (%d bytes)\n\n", webpage_getHTMLlen(page));
-
-	// Save the seed page
-	const char *pagedir = "../pages";
-	if (pagesave(page, 1, (char*)pagedir) != 0) {
-		fprintf(stderr, "Error: failed to save page\n");
-	}
+		
+	// initial load
+	// put page in queue, mark as seen in hashtable, and save page
+	qput(queue, page);
+	hput(hashtable, seedURL, seedURL, strlen(seedURL));
+  pagesave(page, pageIndex++, (char*)pagedir);
 	printf("\n");
-	
-	// Create queue for internal URLs
-	queue = qopen();
-	if (queue == NULL) {
-		fprintf(stderr, "Error: failed to create queue\n");
-		webpage_delete(page);
-		return EXIT_FAILURE;
-	}
-
-	// Create hashtable to record visited URLs
-	hashtable = hopen(HASHTABLE_SIZE);
-	if (hashtable == NULL) {
-		fprintf(stderr, "Error: failed to create hashtable\n");
-		webpage_delete(page);
-		return EXIT_FAILURE;
-	}
 	
 	// Extract URLs and add internal ones to queue
 	printf("Extracting URLs...\n");
 
-	while ((pos = webpage_getNextURL(page, pos, &url)) > 0) {
-		// Check if internal
-		if (IsInternalURL(url)) {
-			printf("  [INTERNAL] %s\n", url);
+	while ((page = qget(queue)) != NULL) {
+	  int pos = 0;
+		char* url;
+		while ((pos = webpage_getNextURL(page, pos, &url)) > 0 && webpage_getDepth(page) < max_depth) {
+			// Check if internal
+			if (IsInternalURL(url)) {
+				printf("  [INTERNAL] %s\n", url);
 			
-			// Check if already visited
-			if (!visited_url(hashtable, url)) {
-				// Create new webpage for this URL at depth 1
-				webpage_t *new_page = webpage_new(url, 1, NULL);
-				if (new_page != NULL) {
-					qput(queue, new_page);
-					hput(hashtable, url, url, strlen(url));
-					// DON'T free url - hash table owns it now
+				// Check if already visited
+				if (!visited_url(hashtable, url)) {
+					// Create new webpage for this URL at depth 1
+					webpage_t *new_page = webpage_new(url, webpage_getDepth(page) + 1, NULL);
+					if (new_page != NULL) {
+						webpage_fetch(new_page);
+						qput(queue, new_page);
+						hput(hashtable, url, url, strlen(url));
+						if (pagesave(new_page, pageIndex++, (char*)pagedir) != 0) {
+							fprintf(stderr, "Error: failed to save page\n");
+						}					
+					} else {
+						free(url);  // Failed to create page, free the url
+					}
 				} else {
-					free(url);  // Failed to create page, free the url
+					// Already visited, free the url
+					free(url);
 				}
 			} else {
-				// Already visited, free the url
-				free(url);
+				printf("  [EXTERNAL] %s (skipped)\n", url);
+				free(url);  // Free external URLs
 			}
-		} else {
-			printf("  [EXTERNAL] %s (skipped)\n", url);
-			free(url);  // Free external URLs
 		}
 	}
-	
-	// Print the queue
-	printf("Queue contents:\n");
-	printf("---------------\n");
-	qapply(queue, print_webpage);
-	printf("---------------\n\n");
-	
-	// Verify requirements
-	printf("Verification:\n");
-	printf("- Page saved to ../pages/1: ✓\n");
-	printf("- File contains URL, depth, length, and HTML: check with 'cat ../pages/1 | head -10'\n");
-	
+
 	// Clean up: remove and delete all webpages from queue
 	webpage_t *wp;
 	while ((wp = (webpage_t*)qget(queue)) != NULL) {
 		webpage_delete(wp);
 	}
 	
-	// Close queue
 	qclose(queue);
-
-	// Free all URLs in hashtable, then close it
 	happly(hashtable, free_url);
 	hclose(hashtable);
- 
-	// Delete the seed page and the new page
-	webpage_delete(page);
-
-	
-	printf("\n✓ Step 5 complete!\n");
 	
 	return EXIT_SUCCESS;
 }
