@@ -7,3 +7,5 @@ crawler: crawler.c
 
 clean:
 	rm -f crawler
+	rm -rf pages
+	mkdir pages

@@ -1,5 +1,5 @@
 /* 
- * crawler.c - web crawler for tiny search engine
+11;rgb:3030/0a0a/2424* crawler.c - web crawler for tiny search engine
  * Step 6: Complete Crawler
  */
 
@@ -38,6 +38,16 @@ void free_url(void *urlp) {
 		free((char*)urlp);
 	}
 }
+
+// helper function to remove trailing frontslash in url
+void remove_trailing_slash(char *str) {
+    int len = strlen(str);
+
+    if (len > 0 && str[len - 1] == '/') {
+        str[len - 1] = '\0'; 
+    }
+}
+
 /* 
  * pagesave - saves a webpage to a file
  * @pagep: pointer to webpage to save
@@ -98,7 +108,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// crawler "https://thayer.github.io/engs50/" ../pages 1
-    char *seedURL = argv[1];
+	char *seedURL = argv[1];
 	char *pagedir = argv[2];
 	int max_depth = strtoul(argv[3], NULL, 10);
 	
@@ -144,7 +154,9 @@ int main(int argc, char* argv[]) {
 	hput(hashtable, seedcopy, seedcopy, strlen(seedcopy));
 	pagesave(page, pageIndex++, (char*)pagedir);
 	printf("\n");
-	
+	//char *seedcopycopy = strdup(seedcopy);
+	//remove_trailing_slash(seedcopycopy);
+	//hput(hashtable, seedcopycopy, seedcopycopy, strlen(seedcopycopy));
 	// Extract URLs and add internal ones to queue
 	printf("Extracting URLs...\n");
 
@@ -163,19 +175,20 @@ int main(int argc, char* argv[]) {
 			// Check if internal
 			if (IsInternalURL(url)) {
 				printf("  [INTERNAL] %s\n", url);
-			
 				// Check if already visited
 				if (!visited_url(hashtable, url)) {
 					// Create new webpage for this URL at depth+1
 					webpage_t *new_page = webpage_new(url, webpage_getDepth(page) + 1, NULL);
-					if (new_page != NULL) {
-						webpage_fetch(new_page);
+					if (new_page != NULL && webpage_fetch(new_page)) {
 						qput(queue, new_page);
 						char *urlcopy = strdup(url);      
 						hput(hashtable, urlcopy, urlcopy, strlen(urlcopy));
 						if (pagesave(new_page, pageIndex++, (char*)pagedir) != 0) {
 							fprintf(stderr, "Error: failed to save page\n");
 						}
+						//char *urlcopycopy = strdup(urlcopy);      
+						//remove_trailing_slash(urlcopycopy);
+						//hput(hashtable, urlcopycopy, urlcopycopy, strlen(urlcopycopy));
 					}
 				}
 				free(url);
