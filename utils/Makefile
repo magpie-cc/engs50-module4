@@ -1,7 +1,7 @@
 # Makefile for utils library
 CFLAGS=-Wall -pedantic -std=c11 -I. -g
 
-OFILES=queue.o hash.o webpage.o
+OFILES=queue.o hash.o webpage.o pageio.o
 
 all: $(OFILES)
 	ar cr ../lib/libutils.a $(OFILES)
@@ -14,6 +14,9 @@ hash.o: hash.c hash.h queue.h
 
 webpage.o: webpage.c webpage.h
 	gcc $(CFLAGS) -c webpage.c
+
+pageio.o: pageio.c pageio.h
+	gcc $(CFLAGS) -c pageio.c
 
 clean:
 	rm -f *.o ../lib/libutils.a
