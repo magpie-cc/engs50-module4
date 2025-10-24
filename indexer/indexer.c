@@ -8,31 +8,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include "pageio.h"
+#include <pageio.h>
+#include <webpage.h>
 
 int NormalizeWord(char *w);
 
 int main(void){
-	int pos=0;
+	int pos = 0;
 	char *word;
-	webpage_t *page = pageload(1, "pages");
-	while((pos = webpage_getNextWord(page, pos, &word)) > 0 ){
-		if(NormalizeWord(word) == 0){
+	int id = 1;
+	char *pagedir = "../crawler/pages";
+	
+	webpage_t *webpage = pageload(id, pagedir);
+
+	while ((pos = webpage_getNextWord(webpage, pos, &word)) > 0 ) {
+		if (NormalizeWord(word) == 0) {
 			fprintf(stdout, "%s\n", word);
 		}
 		free(word);
 	}
-	free(page);					
-	return 0;
+	
+	webpage_delete(webpage);					
+
+	exit(EXIT_SUCCESS);
 }
 
-int NormalizeWord(char *w){
-	int k=0;
-	while(w[k] != '\0'){
-		if(!isalpha(w[k])){
-			return ;
-		}else if(w[k] <= 'Z') w[k] +=32;
-		k++;
-	}
-	return 0;
+int NormalizeWord(char *wp) {
+  if (wp == NULL || strlen(wp) < 3) return 1;
+
+	char *p = wp;
+
+	while (*p != '\0') {
+    if (!isalpha((unsigned char) *p)) {
+      return 1;
+    }
+    *p = tolower((unsigned char) *p);
+		p++;
+  }
+	
+  return 0;
 }
