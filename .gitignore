@@ -1,7 +1,16 @@
 # Build artifacts
 utils/*.o
-lib/libutils.a
 crawler/crawler
+indexer/indexer
+test/test_pageio
+
+# Output and data directories
+pages/
+test_pages/
+verify_pages/
+
+# Output files
+indexer/words.txt
 
 # Editor files
 *~

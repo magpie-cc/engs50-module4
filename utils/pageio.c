@@ -84,26 +84,40 @@ webpage_t *pageload(int id, char *dirnm) {
 	}
 
 	char *url = malloc(256 * sizeof(char));
+	if (url == NULL) {
+		fclose(fp);
+		return NULL;
+	}
+	
 	int depth;
 	int htmlsize;
 	
-  fscanf(fp, "%s\n%d\n%d\n", url, &depth, &htmlsize);
+	fscanf(fp, "%s\n%d\n%d\n", url, &depth, &htmlsize);
 
-	char *html = malloc(htmlsize);
-	if (html == NULL) return NULL;
+	char *html = malloc(htmlsize + 1);  // +1 for null terminator
+	if (html == NULL) {
+		free(url);
+		fclose(fp);
+		return NULL;
+	}
 
 	char ch;
 	int i = 0;
-  while ((ch = fgetc(fp)) != EOF) {
-    html[i++] = ch;
-  }
-
-  html[i] = 0;
+	while ((ch = fgetc(fp)) != EOF) {
+		html[i++] = ch;
+	}
+	html[i] = '\0';
+	
+	fclose(fp);  // Close file
 	
 	webpage_t *wp = webpage_new(url, depth, html);
-	if (wp == NULL) return NULL;
+	
+	free(url);  // webpage_new made a copy, free original
+	
+	if (wp == NULL) {
+		free(html);  // If webpage_new failed, free html too
+		return NULL;
+	}
 	
 	return wp;
 }
-
-

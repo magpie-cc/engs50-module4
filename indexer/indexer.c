@@ -17,7 +17,7 @@ int main(void){
 	int pos = 0;
 	char *word;
 	int id = 1;
-	char *pagedir = "../crawler/pages";
+	char *pagedir = "../pages";
 	
 	webpage_t *webpage = pageload(id, pagedir);
 
