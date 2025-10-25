@@ -1,10 +1,10 @@
 /* 
- * indexer.c - Step 3: Hash table of words
+ * indexer.c - Step 4: Queue of documents
  * 
- * Description: Index webpage 1 into hash table with word counts
+ * Description: Index webpage with queue of documents per word
  */
-
 #define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,30 +13,29 @@
 #include <pageio.h>
 #include <webpage.h>
 #include <hash.h>
+#include <queue.h>
 
-// Structure to hold a word and its count
-typedef struct wordcount {
-	char *word;
+// Structure to hold document ID and count
+typedef struct doccount {
+	int docID;
 	int count;
-} wordcount_t;
+} doccount_t;
+
+// Structure to hold a word and its queue of documents
+typedef struct wordnode {
+	char *word;
+	queue_t *docs;  // queue of doccount_t
+} wordnode_t;
 
 // Function prototypes
 int NormalizeWord(char *w);
-bool searchfn(void *elementp, const void *keyp);
+bool searchfn_word(void *elementp, const void *keyp);
+bool searchfn_doc(void *elementp, const void *keyp);
 void sumwords_fn(void *elementp);
-void free_wordcount(void *elementp);
+void free_wordnode(void *elementp);
 
 // Global variable for sum
 int total_words = 0;
-
-// Free a wordcount entry
-void free_wordcount(void *elementp) {
-	wordcount_t *wc = (wordcount_t*)elementp;
-	if (wc != NULL) {
-		free(wc->word);
-		free(wc);
-	}
-}
 
 int main(void) {
 	int pos = 0;
@@ -45,7 +44,7 @@ int main(void) {
 	char *pagedir = "../pages";
 	const uint32_t HASHTABLE_SIZE = 100;
 	
-	printf("Step 3: Hash Table of Words\n");
+	printf("Step 4: Queue of Documents\n");
 	printf("============================\n\n");
 	
 	// Create hash table
@@ -70,18 +69,40 @@ int main(void) {
 		// Normalize word
 		if (NormalizeWord(word) == 0) {
 			// Search for word in hash table
-			wordcount_t *wc = (wordcount_t*)hsearch(index, searchfn, word, strlen(word));
+			wordnode_t *wn = (wordnode_t*)hsearch(index, searchfn_word, word, strlen(word));
 			
-			if (wc != NULL) {
-				// Word found - increment count
-				wc->count++;
+			if (wn != NULL) {
+				// Word found - search for document in queue
+				doccount_t *dc = (doccount_t*)qsearch(wn->docs, searchfn_doc, &id);
+				
+				if (dc != NULL) {
+					// Document found - increment count
+					dc->count++;
+				} else {
+					// Document not found - create new entry
+					dc = (doccount_t*)malloc(sizeof(doccount_t));
+					if (dc != NULL) {
+						dc->docID = id;
+						dc->count = 1;
+						qput(wn->docs, dc);
+					}
+				}
 			} else {
-				// Word not found - create new entry
-				wc = (wordcount_t*)malloc(sizeof(wordcount_t));
-				if (wc != NULL) {
-					wc->word = strdup(word);
-					wc->count = 1;
-					hput(index, wc, word, strlen(word));
+				// Word not found - create new wordnode with queue
+				wn = (wordnode_t*)malloc(sizeof(wordnode_t));
+				if (wn != NULL) {
+					wn->word = strdup(word);
+					wn->docs = qopen();
+					
+					// Add first document
+					doccount_t *dc = (doccount_t*)malloc(sizeof(doccount_t));
+					if (dc != NULL) {
+						dc->docID = id;
+						dc->count = 1;
+						qput(wn->docs, dc);
+					}
+					
+					hput(index, wn, word, strlen(word));
 				}
 			}
 		}
@@ -102,7 +123,7 @@ int main(void) {
 	}
 	
 	// Cleanup
-	happly(index, free_wordcount);
+	happly(index, free_wordnode);
 	hclose(index);
 	webpage_delete(webpage);
 	
@@ -125,15 +146,53 @@ int NormalizeWord(char *wp) {
 	return 0;
 }
 
-// Search function for hash table
-bool searchfn(void *elementp, const void *keyp) {
-	wordcount_t *wc = (wordcount_t*)elementp;
+// Search function for word in hash table
+bool searchfn_word(void *elementp, const void *keyp) {
+	wordnode_t *wn = (wordnode_t*)elementp;
 	char *word = (char*)keyp;
-	return strcmp(wc->word, word) == 0;
+	return strcmp(wn->word, word) == 0;
 }
 
-// Sum function to count all words
+// Search function for document in queue
+bool searchfn_doc(void *elementp, const void *keyp) {
+	doccount_t *dc = (doccount_t*)elementp;
+	int *docID = (int*)keyp;
+	return dc->docID == *docID;
+}
+
+// Sum function to count all words across all documents
 void sumwords_fn(void *elementp) {
-	wordcount_t *wc = (wordcount_t*)elementp;
-	total_words += wc->count;
+	wordnode_t *wn = (wordnode_t*)elementp;
+	
+	// Sum counts from all documents in the queue
+	queue_t *temp_queue = qopen();
+	doccount_t *dc;
+	
+	while ((dc = (doccount_t*)qget(wn->docs)) != NULL) {
+		total_words += dc->count;
+		qput(temp_queue, dc);
+	}
+	
+	// Restore queue
+	while ((dc = (doccount_t*)qget(temp_queue)) != NULL) {
+		qput(wn->docs, dc);
+	}
+	qclose(temp_queue);
+}
+
+// Free a wordnode entry
+void free_wordnode(void *elementp) {
+	wordnode_t *wn = (wordnode_t*)elementp;
+	if (wn != NULL) {
+		free(wn->word);
+		
+		// Free all documents in queue
+		doccount_t *dc;
+		while ((dc = (doccount_t*)qget(wn->docs)) != NULL) {
+			free(dc);
+		}
+		qclose(wn->docs);
+		
+		free(wn);
+	}
 }
