@@ -1,5 +1,5 @@
 /* 
- * indexer.c - Step 5： Scan Multiple Docs
+ * indexer.c - 
  * 
  * Description: Index webpage with queue of documents per word
  */
@@ -14,18 +14,7 @@
 #include <webpage.h>
 #include <hash.h>
 #include <queue.h>
-
-// Structure to hold document ID and count
-typedef struct doccount {
-	int docID;
-	int count;
-} doccount_t;
-
-// Structure to hold a word and its queue of documents
-typedef struct wordnode {
-	char *word;
-	queue_t *docs;  // queue of doccount_t
-} wordnode_t;
+#include <indexio.h>
 
 // Function prototypes
 int NormalizeWord(char *w);
@@ -38,7 +27,7 @@ void free_wordnode(void *elementp);
 int total_words = 0;
 
 int main(int argc, char *argv[]) {
-	char *pagedir = "../pages";
+	char *pagedir = "../crawler/pages";
 	const uint32_t HASHTABLE_SIZE = 100;
 
 	// Get id from command line

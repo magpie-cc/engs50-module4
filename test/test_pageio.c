@@ -16,7 +16,7 @@ int main() {
 
 	int id = 1;
 	char *dirnm = "../pages";
-	char *testdir = "../test_pages";
+	char *testdir = "../test_files";
 		
 	webpage_t *wp = pageload(id, dirnm);
 	pagesave(wp, id, testdir);

@@ -3,6 +3,7 @@ utils/*.o
 crawler/crawler
 indexer/indexer
 test/test_pageio
+test/test_indexio
 
 # Output and data directories
 pages/
@@ -19,3 +20,6 @@ indexer/words.txt
 
 # OS files
 .DS_Store
+
+# .backup files
+*/.backup
