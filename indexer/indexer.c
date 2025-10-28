@@ -15,6 +15,8 @@
 #include <hash.h>
 #include <queue.h>
 #include <indexio.h>
+#include <dirent.h>
+#include <errno.h>
 
 // Function prototypes
 int NormalizeWord(char *w);
@@ -27,15 +29,23 @@ void free_wordnode(void *elementp);
 int total_words = 0;
 
 int main(int argc, char *argv[]) {
-	char *pagedir = "../crawler/pages";
 	const uint32_t HASHTABLE_SIZE = 100;
 
 	// Get id from command line
-	if (argc != 2) {
-		fprintf(stderr, "usage: indexer <id>\n");
+	if (argc != 3) {
+		fprintf(stderr, "usage: indexer <pagedir> <indexnm>\n");
 		return EXIT_FAILURE;
 	}
-	int id = atoi(argv[1]);
+	
+	char *pagedir = argv[1];
+	DIR *dir = opendir(pagedir);
+	struct dirent *entry;
+
+	if (!dir && errno == ENOENT) {
+		fprintf(stderr, "Error: directory does not exist");
+		exit(EXIT_FAILURE);
+	} 
+	char *indexnm = argv[2];
 	
 	printf("Step 5： Scan Multiple Docs\n");
 	printf("============================\n\n");
@@ -46,9 +56,12 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Error: failed to create hash table\n");
 		return EXIT_FAILURE;
 	}
+
+	int current_id;
 	
 	// Process all pages from 1 to id
-	for (int current_id = 1; current_id <= id; current_id++) {
+  while ((entry = readdir(dir)) != NULL) {
+		current_id = atoi(entry->d_name);
 		webpage_t *webpage = pageload(current_id, pagedir);
 		if (webpage == NULL) {
 			fprintf(stderr, "Error: failed to load page %d\n", current_id);
@@ -107,29 +120,16 @@ int main(int argc, char *argv[]) {
 		
 		webpage_delete(webpage);
 	}
-	printf("\n");
-	
-	// Sum all word counts
-	total_words = 0;
-	happly(index, sumwords_fn);
-	
-	printf("\nTotal word count: %d\n", total_words);
 
-	// Verification: Individual page counts from earlier in Step 5
-	// Page 1: 141 words, Page 2: 73 words, Page 3: 109 words
-	// Sum: 141 + 73 + 109 = 323 words
-	
-	if (id == 1 && total_words == 141) {
-		printf("✓ PASS: Single page matches expected!\n");
-	} else if (id == 3 && total_words == 323) {
-		printf("✓ PASS: Pages 1-3 sum matches (141+73+109=323)!\n");
-	} else {
-		printf("Note: Manual verification required for %d page(s)\n", id);
+	remove(indexnm);
+	if (indexsave(index, indexnm) != 0) {
+		fprintf(stderr, "Error: failed to save index");
 	}
 	
 	// Cleanup
 	happly(index, free_wordnode);
 	hclose(index);
+	closedir(dir);
 	
 	return EXIT_SUCCESS;
 }
