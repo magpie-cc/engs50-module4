@@ -2,6 +2,7 @@
 utils/*.o
 crawler/crawler
 indexer/indexer
+querier/querier
 test/test_pageio
 test/test_indexio
 
@@ -9,6 +10,7 @@ test/test_indexio
 pages/
 test_pages/
 verify_pages/
+indexer/saved_index
 
 # Output files
 indexer/words.txt
