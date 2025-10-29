@@ -5,35 +5,46 @@
  * Created: 10-28-2025
  */
 
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 
-int main(void){
-	char t[1000];
-	char c[20][100];
-	while(1){
-		fprintf(stdout, "\n>");
-		int res=scanf("%s", t);
-		fprintf(stdout, "\n");
-		if(res == EOF)break;
-		int k=0;
-		int f=0;
-		while(t[k] != '\0'){
-			if(isalpha(t[k])){
-				c[k][f]=t[k];
-			}else if(k+f != 0 && isspace(t[k]) && !isspace(t[k-1]) && t[k+1] != '\0'){
-				c[k][f] = ' ';
-				f++;
-			}else{
-				fprintf(stdout, "[invalid query]");
-				break;
-			}
-			k++;
-		}
-		c[k+f+1]=' ';
-		fprintf(stdout, "%s", c);
-	}
-	return 0;
+int main(void) {
+    char t[1000];
+    char c[100][40];
+    while (1) {
+			fprintf(stdout, "\n>");
+        if (!fgets(t, sizeof(t), stdin))
+            break;
+				t[strcspn(t, "\n")] = '\0';
+        int w=0, j=0, k=0;
+        for (int i = 0; t[i] != '\0'; i++) {
+            if(isalpha(t[i])) {
+							if(isupper(t[i])){
+									c[w][j++] = t[i]+32;
+							}else c[w][j++] = t[i];
+            } else if(isspace(t[i]) || t[i] == '\n') {
+                if (j > 0) {
+                    c[w][j] = '\0';
+                    w++;
+                    j = 0;
+                }
+            } else {
+							fprintf(stdout, "[invalid query]\n");
+								k=1;
+                break;
+            }
+        }
+        if (j > 0)
+            c[w++][j] = '\0';
+
+				if(!k){
+					for (int i = 0; i < w; i++){
+						fprintf(stdout, "%s ", c[i]);
+					}
+					fprintf(stdout, "\n");
+				}
+    }
+    return 0;
 }
+
