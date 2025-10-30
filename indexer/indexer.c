@@ -1,7 +1,7 @@
 /* 
- * indexer.c - 
+ * indexer.c - Complete indexer for Module 5 Step 7
  * 
- * Description: Index webpage with queue of documents per word
+ * Description: Index webpages from crawler directory
  */
 #define _POSIX_C_SOURCE 200809L
 
@@ -22,53 +22,61 @@
 int NormalizeWord(char *w);
 bool searchfn_word(void *elementp, const void *keyp);
 bool searchfn_doc(void *elementp, const void *keyp);
-void sumwords_fn(void *elementp);
 void free_wordnode(void *elementp);
-
-// Global variable for sum
-int total_words = 0;
 
 int main(int argc, char *argv[]) {
 	const uint32_t HASHTABLE_SIZE = 100;
 
-	// Get id from command line
+	// Validate arguments
 	if (argc != 3) {
 		fprintf(stderr, "usage: indexer <pagedir> <indexnm>\n");
 		return EXIT_FAILURE;
 	}
 	
 	char *pagedir = argv[1];
-	DIR *dir = opendir(pagedir);
-	struct dirent *entry;
-
-	if (!dir && errno == ENOENT) {
-		fprintf(stderr, "Error: directory does not exist");
-		exit(EXIT_FAILURE);
-	} 
 	char *indexnm = argv[2];
 	
-	printf("Step 5： Scan Multiple Docs\n");
+	// Verify directory exists
+	DIR *dir = opendir(pagedir);
+	if (!dir) {
+		fprintf(stderr, "Error: cannot open directory %s\n", pagedir);
+		return EXIT_FAILURE;
+	}
+	
+	printf("Indexer: Processing pages from %s\n", pagedir);
 	printf("============================\n\n");
 	
 	// Create hash table
 	hashtable_t *index = hopen(HASHTABLE_SIZE);
 	if (index == NULL) {
 		fprintf(stderr, "Error: failed to create hash table\n");
+		closedir(dir);
 		return EXIT_FAILURE;
 	}
 
-	int current_id;
+	// Process all pages in directory
+	struct dirent *entry;
+	int pages_processed = 0;
 	
-	// Process all pages from 1 to id
-  while ((entry = readdir(dir)) != NULL) {
-		current_id = atoi(entry->d_name);
+	while ((entry = readdir(dir)) != NULL) {
+		// Skip . and .. and non-numeric entries
+		if (entry->d_name[0] == '.' || !isdigit(entry->d_name[0])) {
+			continue;
+		}
+		
+		int current_id = atoi(entry->d_name);
+		if (current_id == 0) {  // Skip invalid conversions
+			continue;
+		}
+		
 		webpage_t *webpage = pageload(current_id, pagedir);
 		if (webpage == NULL) {
-			fprintf(stderr, "Error: failed to load page %d\n", current_id);
-			continue;  // Skip this page, continue with others
+			fprintf(stderr, "Warning: failed to load page %d\n", current_id);
+			continue;
 		}
 		
 		printf("Processing page %d: %s\n", current_id, webpage_getURL(webpage));
+		pages_processed++;
 		
 		int pos = 0;
 		char *word;
@@ -120,16 +128,25 @@ int main(int argc, char *argv[]) {
 		
 		webpage_delete(webpage);
 	}
-
-	remove(indexnm);
+	
+	closedir(dir);
+	
+	printf("\nProcessed %d pages\n", pages_processed);
+	printf("Saving index to %s...\n", indexnm);
+	
+	// Save index
 	if (indexsave(index, indexnm) != 0) {
-		fprintf(stderr, "Error: failed to save index");
+		fprintf(stderr, "Error: failed to save index\n");
+		happly(index, free_wordnode);
+		hclose(index);
+		return EXIT_FAILURE;
 	}
+	
+	printf("Index saved successfully!\n");
 	
 	// Cleanup
 	happly(index, free_wordnode);
 	hclose(index);
-	closedir(dir);
 	
 	return EXIT_SUCCESS;
 }
@@ -162,26 +179,6 @@ bool searchfn_doc(void *elementp, const void *keyp) {
 	doccount_t *dc = (doccount_t*)elementp;
 	int *docID = (int*)keyp;
 	return dc->docID == *docID;
-}
-
-// Sum function to count all words across all documents
-void sumwords_fn(void *elementp) {
-	wordnode_t *wn = (wordnode_t*)elementp;
-	
-	// Sum counts from all documents in the queue
-	queue_t *temp_queue = qopen();
-	doccount_t *dc;
-	
-	while ((dc = (doccount_t*)qget(wn->docs)) != NULL) {
-		total_words += dc->count;
-		qput(temp_queue, dc);
-	}
-	
-	// Restore queue
-	while ((dc = (doccount_t*)qget(temp_queue)) != NULL) {
-		qput(wn->docs, dc);
-	}
-	qclose(temp_queue);
 }
 
 // Free a wordnode entry
