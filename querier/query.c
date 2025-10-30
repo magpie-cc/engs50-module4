@@ -1,6 +1,5 @@
 /* 
- * query.c - Module 6 Step 3: Rank N-Documents
- * 
+ * query.c - Module 6 Step 4: Complex Queries with AND/OR
  */
 #define _POSIX_C_SOURCE 200809L
 
@@ -16,7 +15,7 @@
 #include <stdlib.h>
 #include <limits.h>
 
-// Structure to hold document rank
+// Structures
 typedef struct docrank {
 	int docID;
 	int rank;
@@ -31,13 +30,19 @@ bool docrank_search(void* elementp, const void* searchkeyp);
 void free_wordnode(void *elementp);
 void free_docrank(void *elementp);
 char* get_url(int docID, char *pagedir);
+bool validate_query(char **words, int count);
+queue_t* process_and_sequence(char **words, int start, int end, hashtable_t *index, char *pagedir);
+void merge_or_results(queue_t *results, queue_t *new_results);
+
+// Globals
+char *pagedir_global;
 
 int main(void) {
 	char query[1000];
-	char words[40][1000];
+	char *words[100];  // Pointers to words
 	
-	char *indexnm = "../indexer/index_step3";
-	char *pagedir = "../pages_step3";
+	char *indexnm = "../indexer/index_step4";
+	pagedir_global = "../pages_step4";
 	
 	hashtable_t *index = indexload(indexnm);
 	if (index == NULL) {
@@ -53,112 +58,85 @@ int main(void) {
 			break;
 		
 		query[strcspn(query, "\n")] = '\0';
-		int w = 0, j = 0, invalid = 0;
-
-		// Parse query into words
-		for (int i = 0; query[i] != '\0'; i++) {
-			if (isalpha(query[i])) {
-				words[w][j++] = tolower(query[i]);
-			}
-			else if (isspace(query[i]) || query[i] == '\n') {
-				if (j > 0) {
-					words[w][j] = '\0';
-					w++;
-					j = 0;
+		
+		// Tokenize query into words
+		int w = 0;
+		char *token = strtok(query, " \t");
+		while (token != NULL && w < 100) {
+			// Check for invalid characters
+			bool valid = true;
+			for (int i = 0; token[i] != '\0'; i++) {
+				if (!isalpha(token[i])) {
+					printf("[invalid query]\n");
+					valid = false;
+					break;
 				}
 			}
-			else {
-				fprintf(stdout, "[invalid query]\n");
-				invalid = 1;
+			
+			if (!valid) {
+				w = -1;  // Mark as invalid
 				break;
 			}
+			
+			// Convert to lowercase
+			for (int i = 0; token[i] != '\0'; i++) {
+				token[i] = tolower(token[i]);
+			}
+			
+			words[w++] = token;
+			token = strtok(NULL, " \t");
 		}
 		
-		if (j > 0)
-			words[w++][j] = '\0';
+		// Skip if invalid or empty
+		if (w == -1) continue;
+		if (w == 0) continue;
 		
-		// Skip empty queries
-		if (w == 0 && !invalid) {
+		// Validate query syntax
+		if (!validate_query(words, w)) {
+			printf("[invalid query]\n");
 			continue;
 		}
 		
-		// Process valid queries
-		if (!invalid) {
-			// Print normalized query
-			for (int i = 0; i < w; i++) {
-				printf("%s ", words[i]);
-			}
-			printf("\n");
-			
-			// Create queue to hold results
-			queue_t *results = qopen();
-			
-			// Get first word's document list
-			char *firstword = words[0];
-			wordnode_t *firstnode = (wordnode_t*)hsearch(index, index_search, firstword, strlen(firstword));
-			
-			if (firstnode == NULL) {
-				printf("No documents found\n");
-				qclose(results);
-				continue;
-			}
-			
-			// For each document in first word's list
-			queue_t *temp = qopen();
-			doccount_t *dc;
-			
-			// Copy first word's docs to temp queue
-			while ((dc = (doccount_t*)qget(firstnode->docs)) != NULL) {
-				qput(temp, dc);
-			}
-			// Restore
-			while ((dc = (doccount_t*)qget(temp)) != NULL) {
-				qput(firstnode->docs, dc);
-				
-				int docID = dc->docID;
-				int rank = dc->count;  // Start with first word count
-				
-				// Check if this document contains ALL other words
-				bool hasAllWords = true;
-				for (int i = 1; i < w; i++) {
-					wordnode_t *wn = (wordnode_t*)hsearch(index, index_search, words[i], strlen(words[i]));
-					if (wn == NULL) {
-						hasAllWords = false;
-						break;
-					}
-					
-					doccount_t *doc = (doccount_t*)qsearch(wn->docs, queue_search, &docID);
-					if (doc == NULL) {
-						hasAllWords = false;
-						break;
-					}
-					
-					// Update rank (minimum)
-					rank = min_int(rank, doc->count);
-				}
-				
-				// If document has all words, add to results
-				if (hasAllWords) {
-					docrank_t *dr = (docrank_t*)malloc(sizeof(docrank_t));
-					if (dr != NULL) {
-						dr->docID = docID;
-						dr->rank = rank;
-						dr->url = get_url(docID, pagedir);
-						qput(results, dr);
-					}
-				}
-			}
-			qclose(temp);
-			
-			// Print results
-			docrank_t *result;
-			while ((result = (docrank_t*)qget(results)) != NULL) {
-				printf("rank: %d: doc: %d: %s\n", result->rank, result->docID, result->url);
-				free_docrank(result);
-			}
-			
-			qclose(results);
+		// Print normalized query
+		for (int i = 0; i < w; i++) {
+			printf("%s ", words[i]);
 		}
+		printf("\n");
+		
+		// Process query: split by OR, process each AND sequence
+		queue_t *final_results = qopen();
+		int seq_start = 0;
+		
+		for (int i = 0; i <= w; i++) {
+			if (i == w || strcmp(words[i], "or") == 0) {
+				// Process AND sequence from seq_start to i-1
+				if (i > seq_start) {
+					queue_t *seq_results = process_and_sequence(words, seq_start, i, index, pagedir_global);
+					merge_or_results(final_results, seq_results);
+					qclose(seq_results);
+				}
+				seq_start = i + 1;
+			}
+		}
+		
+		// Print results
+		docrank_t *first = (docrank_t*)qget(final_results);
+		if (first == NULL) {
+			printf("No documents found\n");
+		} else {
+			// Print first result
+			printf("rank: %d: doc: %d: %s\n", first->rank, first->docID, first->url);
+			free_docrank(first);
+			
+			// Print remaining results
+			docrank_t *dr;
+			while ((dr = (docrank_t*)qget(final_results)) != NULL) {
+				printf("rank: %d: doc: %d: %s\n", dr->rank, dr->docID, dr->url);
+				free_docrank(dr);
+			}
+		}
+		
+		qclose(final_results);
 	}
 
 	// Cleanup
@@ -168,6 +146,118 @@ int main(void) {
 	return 0;
 }
 
+// Validate query syntax
+bool validate_query(char **words, int count) {
+	if (count == 0) return false;
+	
+	// Check first word
+	if (strcmp(words[0], "and") == 0 || strcmp(words[0], "or") == 0) {
+		return false;
+	}
+	
+	// Check last word
+	if (strcmp(words[count-1], "and") == 0 || strcmp(words[count-1], "or") == 0) {
+		return false;
+	}
+	
+	// Check for adjacent operators
+	for (int i = 0; i < count - 1; i++) {
+		bool is_op1 = (strcmp(words[i], "and") == 0 || strcmp(words[i], "or") == 0);
+		bool is_op2 = (strcmp(words[i+1], "and") == 0 || strcmp(words[i+1], "or") == 0);
+		
+		if (is_op1 && is_op2) {
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+// Process AND sequence (words from start to end-1, skipping "and")
+queue_t* process_and_sequence(char **words, int start, int end, hashtable_t *index, char *pagedir) {
+	queue_t *results = qopen();
+	
+	// Collect actual words (skip "and")
+	char *and_words[100];
+	int and_count = 0;
+	for (int i = start; i < end; i++) {
+		if (strcmp(words[i], "and") != 0) {
+			and_words[and_count++] = words[i];
+		}
+	}
+	
+	if (and_count == 0) return results;
+	
+	// Get first word's documents
+	wordnode_t *firstnode = (wordnode_t*)hsearch(index, index_search, and_words[0], strlen(and_words[0]));
+	if (firstnode == NULL) return results;
+	
+	// For each document in first word
+	queue_t *temp = qopen();
+	doccount_t *dc;
+	
+	while ((dc = (doccount_t*)qget(firstnode->docs)) != NULL) {
+		qput(temp, dc);
+	}
+	while ((dc = (doccount_t*)qget(temp)) != NULL) {
+		qput(firstnode->docs, dc);
+		
+		int docID = dc->docID;
+		int rank = dc->count;
+		bool hasAll = true;
+		
+		// Check all other words
+		for (int i = 1; i < and_count; i++) {
+			wordnode_t *wn = (wordnode_t*)hsearch(index, index_search, and_words[i], strlen(and_words[i]));
+			if (wn == NULL) {
+				hasAll = false;
+				break;
+			}
+			
+			doccount_t *doc = (doccount_t*)qsearch(wn->docs, queue_search, &docID);
+			if (doc == NULL) {
+				hasAll = false;
+				break;
+			}
+			
+			rank = min_int(rank, doc->count);
+		}
+		
+		if (hasAll) {
+			docrank_t *dr = (docrank_t*)malloc(sizeof(docrank_t));
+			if (dr) {
+				dr->docID = docID;
+				dr->rank = rank;
+				dr->url = get_url(docID, pagedir);
+				qput(results, dr);
+			}
+		}
+	}
+	qclose(temp);
+	
+	return results;
+}
+
+// Merge OR results (add ranks for same doc, add new docs)
+void merge_or_results(queue_t *results, queue_t *new_results) {
+	docrank_t *new_dr;
+	
+	while ((new_dr = (docrank_t*)qget(new_results)) != NULL) {
+		// Check if document already in results
+		docrank_t *existing = (docrank_t*)qsearch(results, docrank_search, &(new_dr->docID));
+		
+		if (existing) {
+			// Add ranks
+			existing->rank += new_dr->rank;
+			free_docrank(new_dr);
+		} else {
+			// Add new document
+			qput(results, new_dr);
+		}
+	}
+}
+
+// Helper functions
 int min_int(int a, int b) {
 	return (a < b) ? a : b;
 }
@@ -204,13 +294,11 @@ void free_wordnode(void *elementp) {
 	wordnode_t *wn = (wordnode_t*)elementp;
 	if (wn != NULL) {
 		free(wn->word);
-		
 		doccount_t *dc;
 		while ((dc = (doccount_t*)qget(wn->docs)) != NULL) {
 			free(dc);
 		}
 		qclose(wn->docs);
-		
 		free(wn);
 	}
 }
