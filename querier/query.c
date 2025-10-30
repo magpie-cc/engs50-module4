@@ -1,5 +1,7 @@
 /* 
- * query.c - Module 6 Step 4: Complex Queries with AND/OR
+ * query.c - Module 6 Step 5: Complete Querier
+ * 
+ * Usage: query <pageDirectory> <indexFile> [-q]
  */
 #define _POSIX_C_SOURCE 200809L
 
@@ -14,6 +16,8 @@
 #include <indexio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <dirent.h>
+#include <unistd.h>
 
 // Structures
 typedef struct docrank {
@@ -33,26 +37,65 @@ char* get_url(int docID, char *pagedir);
 bool validate_query(char **words, int count);
 queue_t* process_and_sequence(char **words, int start, int end, hashtable_t *index, char *pagedir);
 void merge_or_results(queue_t *results, queue_t *new_results);
+bool is_crawler_directory(char *dir);
 
 // Globals
 char *pagedir_global;
 
-int main(void) {
-	char query[1000];
-	char *words[100];  // Pointers to words
+int main(int argc, char *argv[]) {
+	bool quiet = false;
+	char *pagedir = NULL;
+	char *indexnm = NULL;
 	
-	char *indexnm = "../indexer/index_step4";
-	pagedir_global = "../pages_step4";
+	// Validate arguments
+	if (argc < 3 || argc > 4) {
+		fprintf(stderr, "usage: query <pageDirectory> <indexFile> [-q]\n");
+		return EXIT_FAILURE;
+	}
 	
+	pagedir = argv[1];
+	indexnm = argv[2];
+	
+	if (argc == 4) {
+		if (strcmp(argv[3], "-q") == 0) {
+			quiet = true;
+		} else {
+			fprintf(stderr, "usage: query <pageDirectory> <indexFile> [-q]\n");
+			return EXIT_FAILURE;
+		}
+	}
+	
+	// Validate pageDirectory
+	if (!is_crawler_directory(pagedir)) {
+		fprintf(stderr, "Error: %s is not a valid crawler directory\n", pagedir);
+		return EXIT_FAILURE;
+	}
+	
+	// Validate indexFile is readable
+	FILE *test = fopen(indexnm, "r");
+	if (test == NULL) {
+		fprintf(stderr, "Error: cannot read index file %s\n", indexnm);
+		return EXIT_FAILURE;
+	}
+	fclose(test);
+	
+	// Load index
 	hashtable_t *index = indexload(indexnm);
 	if (index == NULL) {
 		fprintf(stderr, "Error: failed to load index from %s\n", indexnm);
 		return EXIT_FAILURE;
 	}
+	
+	pagedir_global = pagedir;
+	
+	char query[1000];
+	char *words[100];
 
 	while (true) {
-		fprintf(stdout, "\n> ");
-		fflush(stdout);
+		if (!quiet) {
+			fprintf(stdout, "\n> ");
+			fflush(stdout);
+		}
 		
 		if (!fgets(query, sizeof(query), stdin))
 			break;
@@ -74,7 +117,7 @@ int main(void) {
 			}
 			
 			if (!valid) {
-				w = -1;  // Mark as invalid
+				w = -1;
 				break;
 			}
 			
@@ -124,11 +167,9 @@ int main(void) {
 		if (first == NULL) {
 			printf("No documents found\n");
 		} else {
-			// Print first result
 			printf("rank: %d: doc: %d: %s\n", first->rank, first->docID, first->url);
 			free_docrank(first);
 			
-			// Print remaining results
 			docrank_t *dr;
 			while ((dr = (docrank_t*)qget(final_results)) != NULL) {
 				printf("rank: %d: doc: %d: %s\n", dr->rank, dr->docID, dr->url);
@@ -144,6 +185,16 @@ int main(void) {
 	hclose(index);
 	
 	return 0;
+}
+
+// Check if directory is a valid crawler directory
+bool is_crawler_directory(char *dir) {
+	DIR *d = opendir(dir);
+	if (d == NULL) {
+		return false;
+	}
+	closedir(d);
+	return true;
 }
 
 // Validate query syntax
@@ -173,7 +224,7 @@ bool validate_query(char **words, int count) {
 	return true;
 }
 
-// Process AND sequence (words from start to end-1, skipping "and")
+// Process AND sequence
 queue_t* process_and_sequence(char **words, int start, int end, hashtable_t *index, char *pagedir) {
 	queue_t *results = qopen();
 	
@@ -238,20 +289,17 @@ queue_t* process_and_sequence(char **words, int start, int end, hashtable_t *ind
 	return results;
 }
 
-// Merge OR results (add ranks for same doc, add new docs)
+// Merge OR results
 void merge_or_results(queue_t *results, queue_t *new_results) {
 	docrank_t *new_dr;
 	
 	while ((new_dr = (docrank_t*)qget(new_results)) != NULL) {
-		// Check if document already in results
 		docrank_t *existing = (docrank_t*)qsearch(results, docrank_search, &(new_dr->docID));
 		
 		if (existing) {
-			// Add ranks
 			existing->rank += new_dr->rank;
 			free_docrank(new_dr);
 		} else {
-			// Add new document
 			qput(results, new_dr);
 		}
 	}
